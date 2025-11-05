@@ -1,0 +1,52 @@
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$SamAccountName
+)
+
+# 1. Active Directory Query
+try {
+    # Request only the properties needed for efficiency
+    $Properties = "Name", "Title", "Description", "Enabled", "MemberOf", "SamAccountName"
+    $User = Get-ADUser -Identity $SamAccountName -Properties $Properties -ErrorAction Stop
+    
+    # 2. Extract and format data for the UserAccount object
+    $UserDetails = @{
+        SamAccountName = $User.SamAccountName
+        FullName       = $User.Name
+        JobTitle       = $User.Title
+        AccessLevel    = $User.Description
+        Status         = if ($User.Enabled -eq $true) {"Enabled"} else {"Disabled"}
+    }
+    
+    # 3. Extract and format Group Names
+    $Groups = @()
+    # MemberOf returns Distinguished Names (DNs). We need to extract the common name (CN)
+    $User.MemberOf | ForEach-Object {
+        $Groups += (($_ -split ',')[0] -replace '^CN=', '')
+    }
+    
+    # 4. Construct the Final Success Output Object
+    $Result = @{
+        success     = $true
+        UserAccount = $UserDetails
+        Groups      = $Groups | Sort-Object
+    }
+    
+}
+catch {
+    # 5. Handle AD user not found or other errors
+    $ErrorMessage = $_.Exception.Message
+    if ($ErrorMessage -like "*Cannot find an object with identity*") {
+        $Msg = "User account '$SamAccountName' not found in Active Directory."
+    } else {
+        $Msg = "AD Query Error: $($ErrorMessage)"
+    }
+    
+    $Result = @{
+        success = $false
+        message = $Msg
+    }
+}
+
+# 6. Output the result as JSON to Standard Output (stdout)
+$Result | ConvertTo-Json -Depth 4

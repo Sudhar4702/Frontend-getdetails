@@ -1,0 +1,208 @@
+1. ⚙️ PowerShell Script (Get-ADUser-Details.ps1)
+This script does the heavy lifting: querying Active Directory and ensuring the output is always clean JSON, which is easy for Node.js to parse.
+
+Where to do this
+Server: This script must be placed on the Windows server that will run the Node.js application and that has the Active Directory PowerShell Module installed and appropriate read permissions.
+
+Location: Save the file as C:\Scripts\Get-ADUser-Details.ps1 (or adjust the path in the Node.js code later).
+
+The Template
+PowerShell
+
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$SamAccountName
+)
+
+# 1. Active Directory Query
+try {
+    # Request only the properties needed for efficiency
+    $Properties = "Name", "Title", "Description", "Enabled", "MemberOf", "SamAccountName"
+    $User = Get-ADUser -Identity $SamAccountName -Properties $Properties -ErrorAction Stop
+    
+    # 2. Extract and format data for the UserAccount object
+    $UserDetails = @{
+        SamAccountName = $User.SamAccountName
+        FullName       = $User.Name
+        JobTitle       = $User.Title
+        AccessLevel    = $User.Description
+        Status         = if ($User.Enabled -eq $true) {"Enabled"} else {"Disabled"}
+    }
+    
+    # 3. Extract and format Group Names
+    $Groups = @()
+    # MemberOf returns Distinguished Names (DNs). We need to extract the common name (CN)
+    $User.MemberOf | ForEach-Object {
+        $Groups += (($_ -split ',')[0] -replace '^CN=', '')
+    }
+    
+    # 4. Construct the Final Success Output Object
+    $Result = @{
+        success     = $true
+        UserAccount = $UserDetails
+        Groups      = $Groups | Sort-Object
+    }
+    
+}
+catch {
+    # 5. Handle AD user not found or other errors
+    $ErrorMessage = $_.Exception.Message
+    if ($ErrorMessage -like "*Cannot find an object with identity*") {
+        $Msg = "User account '$SamAccountName' not found in Active Directory."
+    } else {
+        $Msg = "AD Query Error: $($ErrorMessage)"
+    }
+    
+    $Result = @{
+        success = $false
+        message = $Msg
+    }
+}
+
+# 6. Output the result as JSON to Standard Output (stdout)
+$Result | ConvertTo-Json -Depth 4
+2. 🟢 Node.js Backend API (Using Express)
+This Node.js application will create a secure web endpoint, receive the username, execute the PowerShell script, and return the JSON result.
+
+Step 2.1: Project Setup
+Initialize Project: Open a terminal in your project directory (e.g., C:\AD_API) and run:
+
+Bash
+
+npm init -y
+Install Dependencies: You only need the express framework for this API.
+
+Bash
+
+npm install express
+Create API File: Create a file named server.js (or app.js) in your project directory.
+
+Step 2.2: Node.js Code (server.js)
+JavaScript
+
+const express = require('express');
+const { exec } = require('child_process');
+const app = express();
+const port = 5000;
+
+// IMPORTANT: Set the path to your PowerShell script here
+const POWERSHELL_SCRIPT_PATH = 'C:\\Scripts\\Get-ADUser-Details.ps1';
+
+// CORS Middleware: Allows your frontend (running on another port/domain) to talk to this API
+// In production, restrict '*' to your actual frontend domain(s)!
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*'); 
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
+
+// --- API Endpoint ---
+app.get('/api/get-user-details', (req, res) => {
+    // 1. Get the username from the query parameter
+    const username = req.query.user ? req.query.user.trim() : '';
+
+    if (!username) {
+        return res.status(400).json({ success: false, message: "Missing required 'user' query parameter." });
+    }
+
+    console.log(`Received request for user: ${username}`);
+
+    // 2. Construct the PowerShell command (use -File and script arguments for security)
+    const command = `powershell.exe -ExecutionPolicy Bypass -NoProfile -File "${POWERSHELL_SCRIPT_PATH}" -SamAccountName "${username}"`;
+
+    // 3. Execute the PowerShell script using child_process.exec
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            // This catches execution failures (e.g., powershell.exe not found)
+            console.error(`Exec Error: ${error.message}`);
+            return res.status(500).json({ 
+                success: false, 
+                message: `Backend Execution Failed: ${error.message}` 
+            });
+        }
+        
+        // PowerShell scripts often print to stderr even for non-terminating errors (e.g., AD module warnings)
+        // If stderr is present, log it but don't fail unless stdout is empty (meaning the script failed to output JSON)
+        if (stderr) {
+            console.warn(`PowerShell Stderr (Warning/Error): ${stderr}`);
+        }
+
+        try {
+            // 4. Parse the JSON output from the PowerShell script's standard output
+            const scriptOutput = JSON.parse(stdout.trim());
+
+            // 5. Check the 'success' property defined in the PowerShell script
+            if (scriptOutput.success) {
+                // Success: return the full JSON object from the script
+                res.status(200).json(scriptOutput);
+            } else {
+                // Script ran, but returned a failure status (e.g., User Not Found)
+                const statusCode = scriptOutput.message.includes('not found') ? 404 : 500;
+                res.status(statusCode).json(scriptOutput);
+            }
+
+        } catch (e) {
+            // Handle JSON parsing error (if the script outputted non-JSON text)
+            console.error(`JSON Parsing Error: ${e.message}. Raw Output: ${stdout}`);
+            res.status(500).json({ 
+                success: false, 
+                message: `Failed to parse script output. Raw text: ${stdout.substring(0, 100)}...` 
+            });
+        }
+    });
+});
+
+// --- Start Server ---
+app.listen(port, () => {
+    console.log(`AD Bridge API running at http://localhost:${port}`);
+});
+Step 2.3: Run the API
+In the terminal on your Windows server, run the Node.js application:
+
+Bash
+
+node server.js
+The console should show: AD Bridge API running at http://localhost:5000
+
+3. 🔗 Frontend Integration (Update JavaScript)
+This is the same as the previous suggestion, ensuring your frontend JavaScript correctly points to the Node.js API server's address.
+
+Replace the existing fetchUserDetails function in your HTML file with this:
+
+JavaScript
+
+        async function fetchUserDetails(username) {
+            document.getElementById('resultsArea').style.display = 'none';
+            showMessage(`🚀 Querying backend for ${username}...`, 'loading');
+            toggleLoading(true);
+
+            // *** NEW API CALL IMPLEMENTATION ***
+            // Use the IP/hostname of the server running the Node.js app
+            const apiUrl = `http://YOUR_SERVER_IP_OR_HOSTNAME:5000/api/get-user-details?user=${username}`;
+            
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json(); 
+
+                toggleLoading(false);
+
+                if (data.success) {
+                    hideMessage();
+                    // data.UserAccount and data.Groups are fields from the PowerShell JSON output
+                    displayResults(username, data.UserAccount, data.Groups);
+                } else {
+                    // Handle the failure message from the Node.js API / PowerShell script
+                    showMessage(data.message, 'error');
+                    document.getElementById('resultsArea').style.display = 'none';
+                }
+
+            } catch (error) {
+                // Handle network errors (e.g., Node.js app is not running or firewall is blocking)
+                console.error("Fetch error:", error);
+                toggleLoading(false);
+                showMessage("❌ Network Error: Could not connect to the backend server (Check Node.js server and port 5000).", 'error');
+            }
+        }
+This structure now uses Node.js and Express to securely act as the intermediary between your web page and Active Directory.
+
+The video below discusses how to use Node.js to execute local shell commands, which is the core concept used here for running the PowerShell script.

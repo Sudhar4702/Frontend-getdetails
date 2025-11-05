@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Access & Role Details System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #f8f9fa;
+            --text-color: #343a40;
+            --border-color: #dee2e6;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+        }
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 40px;
+            background-color: #fff;
+            color: var(--text-color);
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            margin-top: 120px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border-radius: 8px;
+            background-color: #ffffff;
+            border: solid #ebebeb;
+        }
+        h1 {
+            font-weight: 300;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        .search-form {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        #userInput {
+            flex-grow: 1;
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        #userInput:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.1rem rgba(0, 123, 255, 0.25);
+        }
+        .btn-submit {
+            padding: 10px 25px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s, opacity 0.3s;
+        }
+        .btn-submit:hover {
+            background-color: #0056b3;
+        }
+        .btn-submit:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        #statusMessage {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 500;
+            display: none;
+        }
+        .loading {
+            background-color: #e9ecef;
+            color: var(--text-color);
+        }
+        .error {
+            background-color: #f8d7da;
+            color: var(--error-color);
+            border: 1px solid var(--error-color);
+        }
+        .results-section {
+            display: none; 
+            padding-top: 20px;
+        }
+
+        .results-header {
+            font-size: 1.25rem;
+            font-weight: 500;
+            color: var(--text-color);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .detail-card {
+            background-color: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .detail-card h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+            font-weight: 400;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dotted rgba(0, 0, 0, 0.1);
+        }
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+        .label {
+            font-weight: 400;
+        }
+        .value {
+            font-weight: 500;
+            text-align: right;
+        }
+        #groupList {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        #groupList li {
+            background-color: #ffffff;
+            padding: 8px 15px;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            border-left: 3px solid var(--primary-color);
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>👤 User Access & Group Details</h1>
+        <p>Enter the username or UserID to get the details</p>
+        
+        <form class="search-form" id="searchForm">
+            <input type="text" id="userInput" placeholder="Enter User ID (e.g., jdoe)" required>
+            <button type="submit" class="btn-submit" id="submitButton">
+                Get Details
+            </button>
+        </form>
+
+        <div id="statusMessage" class="loading" style="display: none;"></div>
+
+        <div id="resultsArea" class="results-section">
+
+            <div class="results-header">
+                Details for User: <span id="displayedUsername" style="font-weight: bold; color: var(--primary-color);"></span>
+            </div>
+
+            <div class="detail-card">
+                <h3>Primary Details & Roles</h3>
+                <div class="detail-item">
+                    <span class="label">Full Name:</span>
+                    <span class="value" id="detailFullName">N/A</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Job Title / Role:</span>
+                    <span class="value" id="detailJobTitle">N/A</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Access Level (System):</span>
+                    <span class="value" id="detailAccessLevel">N/A</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">Account Status:</span>
+                    <span class="value" id="detailStatus">N/A</span>
+                </div>
+            </div>
+
+            <div class="detail-card">
+                <h3>Group Memberships (Total: <span id="groupCount">0</span>)</h3>
+                <ul id="groupList">
+                    </ul>
+            </div>
+            
+        </div>
+
+    </div>
+
+    <script>
+        document.getElementById('searchForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('userInput').value.trim();
+            if (username) {
+                fetchUserDetails(username);
+            }
+        });
+
+        function showMessage(message, type = 'loading') {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = '';
+            statusDiv.classList.add(type);
+            statusDiv.style.display = 'block';
+        }
+
+        function hideMessage() {
+            document.getElementById('statusMessage').style.display = 'none';
+        }
+
+        function toggleLoading(isLoading) {
+            const button = document.getElementById('submitButton');
+            const input = document.getElementById('userInput');
+            button.disabled = isLoading;
+            button.textContent = isLoading ? 'Fetching...' : 'Fetch Details';
+            input.disabled = isLoading;
+        }
+        async function fetchUserDetails(username) {
+            document.getElementById('resultsArea').style.display = 'none';
+            showMessage('🚀 Executing PowerShell script on backend for ' + username + '...', 'loading');
+            toggleLoading(true);
+            let simulatedData;
+            
+            if (username.toLowerCase() === 'jdoe') {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                simulatedData = {
+                    success: true,
+                    UserAccount: {
+                        SamAccountName: username,
+                        FullName: "John F. Doe",
+                        JobTitle: "Senior Systems Analyst",
+                        AccessLevel: "Admin/Tier 3 Support",
+                        Status: "Enabled"
+                    },
+                    Groups: [
+                        "Domain Admins", "IT_Support_Global", "VPN_Access_L3",
+                        "App_Finance_Write", "SharePoint_HR_View", "All_Employees"
+                    ]
+                };
+            } else if (username.toLowerCase() === 'testuser') {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                simulatedData = {
+                    success: true,
+                    UserAccount: {
+                        SamAccountName: username,
+                        FullName: "Test User",
+                        JobTitle: "Junior Associate",
+                        AccessLevel: "Standard User",
+                        Status: "Enabled"
+                    },
+                    Groups: ["All_Employees", "Office_Users"]
+                };
+            } else {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                simulatedData = {
+                    success: false,
+                    message: `Error: User '${username}' not found in Active Directory or Azure AD.`
+                };
+            }
+
+            toggleLoading(false);
+
+            if (simulatedData.success) {
+                hideMessage();
+                displayResults(username, simulatedData.UserAccount, simulatedData.Groups);
+            } else {
+                showMessage(simulatedData.message, 'error');
+                document.getElementById('resultsArea').style.display = 'none';
+            }
+        }
+
+        function displayResults(username, userDetails, groups) {
+            document.getElementById('displayedUsername').textContent = userDetails.SamAccountName;
+
+            document.getElementById('detailFullName').textContent = userDetails.FullName || 'N/A';
+            document.getElementById('detailJobTitle').textContent = userDetails.JobTitle || 'N/A';
+            document.getElementById('detailAccessLevel').textContent = userDetails.AccessLevel || 'N/A';
+            document.getElementById('detailStatus').textContent = userDetails.Status || 'N/A';
+
+            const groupListElement = document.getElementById('groupList');
+            groupListElement.innerHTML = '';
+            
+            groups.sort().forEach(group => {
+                const li = document.createElement('li');
+                li.textContent = group;
+                groupListElement.appendChild(li);
+            });
+            
+            document.getElementById('groupCount').textContent = groups.length;
+
+            document.getElementById('resultsArea').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
